@@ -21,12 +21,8 @@ export default function Projects() {
         </div>
 
         <div className="grid grid-cols-[1.3fr_0.9fr] gap-5 max-[900px]:grid-cols-1">
-          {projects.map((project, index) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              featured={index === 0}
-            />
+          {projects.map((project) => (
+            <ProjectCard key={project.id} project={project} />
           ))}
         </div>
       </Container>
