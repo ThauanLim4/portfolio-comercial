@@ -3,8 +3,8 @@ import Image from "next/image";
 export default function ProjectCard({ project }) {
   return (
     <article className="border border-line bg-panel rounded-2xl overflow-hidden transition duration-300 hover:-translate-y-1.5 hover:border-white/20">
-      <div className={`h-[330px] relative overflow-hidden p-[22px] max-[620px]:h-[240px]`}>
-        <Image src={project.image} alt={project.title} fill className="object-cover w-full h-full" />
+      <div className="h-[330px] relative overflow-hidden max-[620px]:h-[240px]">
+        <Image src={project.image} alt={project.title} fill className="object-cover" sizes="(max-width: 900px) 100vw, (max-width: 620px) 100vw, 50vw" />
       </div>
 
       <div className="p-6 flex justify-between gap-5">
@@ -18,6 +18,8 @@ export default function ProjectCard({ project }) {
         <a
           className="w-10 h-10 border border-line rounded-full grid place-items-center flex-none hover:bg-white hover:text-[#080a0e]"
           href={project.href}
+          target="_blank"
+          rel="noopener noreferrer"
           aria-label={`Ver projeto: ${project.title}`}
         >
           ↗
