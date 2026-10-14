@@ -1,6 +1,6 @@
 import Container from "@/components/ui/Container";
 import Eyebrow from "@/components/ui/Eyebrow";
-import ProjectCard from "@/components/ProjectCard";
+import ProjectGrid from "@/components/ProjectGrid";
 import { projects } from "@/lib/content";
 
 export default function Projects() {
@@ -20,11 +20,7 @@ export default function Projects() {
           </p>
         </div>
 
-        <div className="grid grid-cols-[1.3fr_0.9fr] gap-5 max-[900px]:grid-cols-1">
-          {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
+        <ProjectGrid projects={projects} />
       </Container>
     </section>
   );

@@ -21,7 +21,7 @@ export default function CTA() {
             href={WHATSAPP_URL}
             variant="light"
             target="_blank"
-            rel="noopener"
+            rel="noopener noreferrer"
             className="whitespace-nowrap"
           >
             Chamar no WhatsApp <span aria-hidden="true">↗</span>

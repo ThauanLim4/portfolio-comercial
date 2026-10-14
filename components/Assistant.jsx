@@ -17,6 +17,33 @@ import {
 
 const SERVICE_LABEL = (id) => `${SERVICE_OPTIONS[id]?.emoji ?? ""} ${SERVICE_OPTIONS[id]?.label ?? id}`;
 
+const STEP_ORDER = [
+  "menu",
+  "name",
+  "service",
+  "business",
+  "features",
+  "materials",
+  "current",
+  "site-url",
+  "deadline",
+  "budget",
+];
+
+const STEP_FIELD = {
+  name: "name",
+  service: "service",
+  business: "business",
+  features: "features",
+  materials: "materials",
+  current: "currentSite",
+  "site-url": "siteUrl",
+  deadline: "deadline",
+  budget: "budget",
+};
+
+const STORAGE_KEY = "thauan.assistant.v1";
+
 function ChatButton({ options, multi = false, selected, onSelect }) {
   return (
     <div className="flex flex-col gap-2">
@@ -66,6 +93,7 @@ export default function Assistant() {
   const [step, setStep] = useState("menu");
   const [busy, setBusy] = useState(false);
   const [answers, setAnswers] = useState({});
+  const [hydrated, setHydrated] = useState(false);
   const bodyRef = useRef(null);
 
   const addBot = (text) =>
@@ -94,6 +122,45 @@ export default function Assistant() {
     autoScroll();
   }, [messages]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  // Restaura a conversa salva (localStorage) após montar no cliente.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (Array.isArray(saved.messages)) setMessages(saved.messages);
+        if (saved.answers && typeof saved.answers === "object")
+          setAnswers(saved.answers);
+        if (typeof saved.step === "string") setStep(saved.step);
+      }
+    } catch {
+      // estado salvo inválido — ignora e começa do zero
+    }
+    setHydrated(true);
+  }, []);
+
+  // Salva o progresso a cada mudança.
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ messages, step, answers })
+      );
+    } catch {
+      // armazenamento indisponível — ignora
+    }
+  }, [hydrated, messages, step, answers]);
+
   const goDirect = () => {
     addBot("Perfeito! 👍\nVou te encaminhar para o WhatsApp para falar diretamente comigo.");
     setStep("direct");
@@ -105,8 +172,18 @@ export default function Assistant() {
   };
 
   const startGuided = () => {
-    addBot("Ótimo! Vou fazer algumas perguntas rápidas para entender o que você precisa. 😊\n\nQual serviço você procura?");
-    setStep("service");
+    addBot("Ótimo! Vou fazer algumas perguntas rápidas. 😊\n\nAntes de tudo, como posso te chamar?");
+    setStep("name");
+  };
+
+  const selectName = (name) => {
+    setAnswers((a) => ({ ...a, name }));
+    setBusy(true);
+    setTimeout(() => {
+      addBot(`Prazer, ${name}! 🤝\n\nQual serviço você procura?`);
+      setBusy(false);
+      setStep("service");
+    }, 350);
   };
 
   const selectService = (id) => {
@@ -207,6 +284,7 @@ export default function Assistant() {
 
   const buildSummary = (a) => {
     const lines = [];
+    if (a.name) lines.push(`👤 ${a.name}`);
     lines.push(SERVICE_LABEL(a.service));
     if (a.business) lines.push(findLabel(BUSINESS_TYPES[a.service] ?? [], a.business));
     if (a.features?.length) {
@@ -229,30 +307,34 @@ export default function Assistant() {
       "",
       "Vim pelo site e gostaria de solicitar um orçamento.",
       "",
-      `📌 Serviço: ${SERVICE_OPTIONS[serviceId]?.label ?? serviceId}`,
     ];
+    if (a.name) msgLines.push(`*Nome:* ${a.name}`);
+    msgLines.push(`*Serviço:* ${SERVICE_OPTIONS[serviceId]?.label ?? serviceId}`);
     if (a.business)
-      msgLines.push(`📌 Negócio: ${findLabel(BUSINESS_TYPES[serviceId] ?? [], a.business)}`);
+      msgLines.push(`*Negócio:* ${findLabel(BUSINESS_TYPES[serviceId] ?? [], a.business)}`);
     if (a.features?.length)
-      msgLines.push(`📌 Recursos: ${a.features.map((f) => findLabel(FEATURES, f)).join(" + ")}`);
+      msgLines.push(`*Recursos:* ${a.features.map((f) => findLabel(FEATURES, f)).join(" + ")}`);
     if (a.materials)
-      msgLines.push(`📌 Materiais: ${findLabel(MATERIALS, a.materials)}`);
+      msgLines.push(`*Materiais:* ${findLabel(MATERIALS, a.materials)}`);
     if (a.currentSite === "sim" && a.siteUrl)
-      msgLines.push(`📌 Site atual: ${a.siteUrl}`);
+      msgLines.push(`*Site atual:* ${a.siteUrl}`);
     else if (a.currentSite === "reformular")
-      msgLines.push("📌 Site atual: quero reformular");
+      msgLines.push("*Site atual:* quero reformular");
     if (a.deadline)
-      msgLines.push(`📌 Prazo: ${findLabel(DEADLINE, a.deadline)}`);
+      msgLines.push(`*Prazo:* ${findLabel(DEADLINE, a.deadline)}`);
     if (a.budget)
-      msgLines.push(`📌 Orçamento: ${findLabel(BUDGET, a.budget)}`);
+      msgLines.push(`*Orçamento:* ${findLabel(BUDGET, a.budget)}`);
     return `https://wa.me/${ASSISTANT_NUMBER}?text=${encodeURIComponent(msgLines.join("\n"))}`;
   };
 
   const selectedFeatures = answers.features ?? [];
 
+  const canGoBack = step in STEP_FIELD;
+
   const goBack = () => {
-    const prev = {
-      service: "menu",
+    const target = {
+      name: "menu",
+      service: "name",
       business: "service",
       features: "business",
       materials: "features",
@@ -260,40 +342,20 @@ export default function Assistant() {
       "site-url": "current",
       deadline: answers.currentSite === "sim" ? "site-url" : "current",
       budget: "deadline",
-      summary: "budget",
     }[step];
 
-    if (!prev) return;
+    if (!target) return;
 
     const cleared = { ...answers };
-    const clearFrom = {
-      menu: ["service", "business", "features", "materials", "currentSite", "siteUrl", "deadline", "budget"],
-      service: ["business", "features", "materials", "currentSite", "siteUrl", "deadline", "budget"],
-      business: ["features", "materials", "currentSite", "siteUrl", "deadline", "budget"],
-      features: ["materials", "currentSite", "siteUrl", "deadline", "budget"],
-      materials: ["currentSite", "siteUrl", "deadline", "budget"],
-      current: ["siteUrl", "deadline", "budget"],
-      "site-url": ["siteUrl", "deadline", "budget"],
-      deadline: ["deadline", "budget"],
-      budget: ["budget"],
-    }[prev];
-    (clearFrom ?? []).forEach((k) => delete cleared[k]);
+    STEP_ORDER.slice(STEP_ORDER.indexOf(target) + 1).forEach((s) => {
+      const field = STEP_FIELD[s];
+      if (field) delete cleared[field];
+    });
 
-    if (prev === "menu") delete cleared.service;
     setAnswers(cleared);
-    setStep(prev);
-    addBot("Entendido, voltando uma etapa! 👈");
+    setStep(target);
+    addBot("Voltando uma etapa 👈");
   };
-
-  const BackButton = () => (
-    <button
-      type="button"
-      onClick={goBack}
-      className="text-center text-[0.78rem] text-muted hover:text-ink transition"
-    >
-      ← Voltar à resposta anterior
-    </button>
-  );
 
   const renderInput = () => {
     if (busy) return null;
@@ -343,13 +405,34 @@ export default function Assistant() {
             </button>
           </div>
         );
+      case "name":
+        return (
+          <input
+            type="text"
+            autoFocus
+            defaultValue={answers.name ?? ""}
+            placeholder="Seu nome"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.target.value.trim()) {
+                selectName(e.target.value.trim());
+              }
+            }}
+            className="w-full text-[0.85rem] rounded-lg border border-[#2a3140] bg-transparent text-ink px-3.5 py-2.5 outline-none focus:border-accent"
+          />
+        );
       case "service":
-        return <ChatButton options={SERVICES} selected={[]} onSelect={selectService} />;
+        return (
+          <ChatButton
+            options={SERVICES}
+            selected={answers.service ? [answers.service] : []}
+            onSelect={selectService}
+          />
+        );
       case "business":
         return (
           <ChatButton
             options={BUSINESS_TYPES[answers.service] ?? BUSINESS_TYPES.outro}
-            selected={[]}
+            selected={answers.business ? [answers.business] : []}
             onSelect={selectBusiness}
           />
         );
@@ -373,16 +456,26 @@ export default function Assistant() {
         );
       case "materials":
         return (
-          <ChatButton options={MATERIALS} selected={[]} onSelect={selectMaterials} />
+          <ChatButton
+            options={MATERIALS}
+            selected={answers.materials ? [answers.materials] : []}
+            onSelect={selectMaterials}
+          />
         );
       case "current":
         return (
-          <ChatButton options={CURRENT_SITE} selected={[]} onSelect={selectCurrent} />
+          <ChatButton
+            options={CURRENT_SITE}
+            selected={answers.currentSite ? [answers.currentSite] : []}
+            onSelect={selectCurrent}
+          />
         );
       case "site-url":
         return (
           <input
             type="text"
+            autoFocus
+            defaultValue={answers.siteUrl ?? ""}
             placeholder="www.seusite.com.br"
             onKeyDown={(e) => {
               if (e.key === "Enter" && e.target.value.trim()) {
@@ -393,9 +486,21 @@ export default function Assistant() {
           />
         );
       case "deadline":
-        return <ChatButton options={DEADLINE} selected={[]} onSelect={selectDeadline} />;
+        return (
+          <ChatButton
+            options={DEADLINE}
+            selected={answers.deadline ? [answers.deadline] : []}
+            onSelect={selectDeadline}
+          />
+        );
       case "budget":
-        return <ChatButton options={BUDGET} selected={[]} onSelect={selectBudget} />;
+        return (
+          <ChatButton
+            options={BUDGET}
+            selected={answers.budget ? [answers.budget] : []}
+            onSelect={selectBudget}
+          />
+        );
       case "summary": {
         const summary = buildSummary(answers);
         return (
@@ -466,7 +571,13 @@ export default function Assistant() {
             </button>
           </div>
 
-          <div ref={bodyRef} className="flex-1 max-h-[420px] overflow-y-auto px-3.5 py-4 space-y-3">
+          <div
+            ref={bodyRef}
+            role="log"
+            aria-live="polite"
+            aria-label="Conversa com o assistente"
+            className="flex-1 max-h-[420px] overflow-y-auto px-3.5 py-4 space-y-3"
+          >
             {messages.map((m, i) => (
               <div key={i} className="max-w-[85%]">
                 <Msg text={m.text} />
@@ -484,6 +595,15 @@ export default function Assistant() {
           </div>
 
           <div className="px-3.5 py-3 border-t border-[#222b3b] bg-[#0e131b]">
+            {!busy && canGoBack && (
+              <button
+                type="button"
+                onClick={goBack}
+                className="mb-2 text-[0.75rem] text-muted hover:text-ink transition"
+              >
+                ← Voltar à etapa anterior
+              </button>
+            )}
             {renderInput()}
           </div>
         </div>
